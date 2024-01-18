@@ -1,0 +1,27 @@
+{
+    "release": {
+      "ubuntu": {
+        "22.04": {
+          "ntp": "chrony"
+        }
+      }
+    },
+    "family": {
+        "redhat": {
+            "curl": "curl",
+            "git": "git",
+            "tree": "tree",
+            "vim": "vim-enhanced",
+            "wget": "wget",
+            "make": "make"
+        },
+        "debian":{
+            "curl": "curl",
+            "git": "git",
+            "tree": "tree",
+            "vim": "vim",
+            "wget": "wget",
+            "make": "make"
+        }
+    }
+}
