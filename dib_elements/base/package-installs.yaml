@@ -5,3 +5,6 @@ wget:
 curl:
 make:
 tree:
+openjdk-11-jre:
+python3:
+python3-pip:

@@ -13,7 +13,9 @@
             "tree": "tree",
             "vim": "vim-enhanced",
             "wget": "wget",
-            "make": "make"
+            "make": "make",
+            "openjdk-11-jre": "java-11-openjdk",
+            "python3": "python3"
         },
         "debian":{
             "curl": "curl",
@@ -21,7 +23,9 @@
             "tree": "tree",
             "vim": "vim",
             "wget": "wget",
-            "make": "make"
+            "make": "make",
+            "openjdk-11-jre": "openjdk-11-jre",
+            "python3": "python3"
         }
     }
 }
