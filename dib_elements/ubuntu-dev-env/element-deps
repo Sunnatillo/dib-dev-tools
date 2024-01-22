@@ -1,4 +1,2 @@
 metal3-base
 openssh-server
-package-installs
-pkg-map

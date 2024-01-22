@@ -1,6 +1,2 @@
-base
-ubuntu
-vm
 pkg-map
-openssh-server
 package-installs
