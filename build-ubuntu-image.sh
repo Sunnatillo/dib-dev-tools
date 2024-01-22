@@ -21,7 +21,7 @@ final_image_name="metal3-dev-env-ubuntu"
 image_date="$(date --utc +"%Y%m%dT%H%MZ")"
 image_name="${final_image_name}-${image_date}-${commit_short}"
 
-disk-image-create -a amd64 ubuntu-dev-env ubuntu -o ${image_name}
+disk-image-create --no-tmpfs -a amd64 ubuntu-dev-env ubuntu  -o ${image_name} block-device-mbr
 
 # Install openstackclient
 sudo pip3 install python-openstackclient

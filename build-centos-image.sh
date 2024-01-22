@@ -13,7 +13,7 @@ export ELEMENTS_PATH="${current_dir}/dib_elements"
 export DIB_DEV_USER_USERNAME="metal3ci"
 export DIB_DEV_USER_PWDLESS_SUDO="yes"
 export DIB_DEV_USER_AUTHORIZED_KEYS=${DIB_DEV_USER_AUTHORIZED_KEYS:-"${current_dir}/id_ed25519_metal3ci.pub"}
-export DIB_RELEASE=centos 
+export DIB_RELEASE=9
 
 # Set image names
 commit_short="$(git rev-parse --short HEAD)"
@@ -21,7 +21,7 @@ final_image_name="metal3-dev-env-ubuntu"
 image_date="$(date --utc +"%Y%m%dT%H%MZ")"
 image_name="${final_image_name}-${image_date}-${commit_short}"
 
-disk-image-create -a amd64 centos-dev-env centos -o ${image_name}
+disk-image-create --no-tmpfs -a amd64 centos-dev-env centos block-device-mbr -o ${image_name}
 
 # Install openstackclient
 sudo pip3 install python-openstackclient
