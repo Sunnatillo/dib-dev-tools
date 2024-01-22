@@ -1,0 +1,1 @@
+This element installs packages and changes configuration for centos
