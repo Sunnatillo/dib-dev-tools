@@ -1,0 +1,217 @@
+#!/bin/bash
+
+# Configure network (set nameservers and disable peer DNS).
+
+cat <<EOF | sudo tee /etc/netplan/90-nameservers.yaml
+network:
+  version: 2
+  ethernets:
+    ens3:
+      dhcp4-overrides:
+        use-dns: no
+      nameservers:
+        addresses: [1.1.1.1, 1.0.0.1]
+
+EOF
+# Apply the changes
+sudo netplan apply
+
+#Disable the automatic updates
+cat << EOF | sudo tee /etc/apt/apt.conf.d/20auto-upgrades
+APT::Periodic::Update-Package-Lists "0";
+APT::Periodic::Unattended-Upgrade "0";
+EOF
+
+# Set apt retry limit to higher than default
+# robust to make the data retrival more reliable
+sudo sh -c 'echo "Acquire::Retries \"10\";" > /etc/apt/apt.conf.d/80-retries'
+
+sudo systemctl disable apt-daily-upgrade.timer
+sudo systemctl disable apt-daily.timer
+sudo systemctl stop apt-daily-upgrade.timer
+sudo systemctl stop apt-daily.timer
+
+# SECURITY HARDENINGS
+# Declares ssh values to set in /etc/ssh/sshd_config
+
+declare -A ssh_values=(
+  [PermitRootLogin]=yes
+  [IgnoreRhosts]=yes
+  [HostbasedAuthentication]=no
+  [PermitEmptyPasswords]=no
+  [X11Forwarding]=no
+  [MaxAuthTries]=5
+  [Ciphers]="aes128-ctr,aes192-ctr,aes256-ctr"
+  [ClientAliveInterval]=0
+  [ClientAliveCountMax]=0
+  [UsePAM]=yes
+  [Protocol]=2
+)
+
+# Parameters to secure networking /etc/sysctl.conf
+declare -A network_parameters=(
+  [net.ipv4.ip_forward]=0
+  [net.ipv4.conf.all.send_redirects]=0
+  [net.ipv4.conf.default.send_redirects]=0
+  [net.ipv4.conf.all.accept_redirects]=0
+  [net.ipv4.conf.default.accept_redirects]=0
+  [net.ipv4.icmp_ignore_bogus_error_responses]=1
+  [fs.suid_dumpable]=0
+  [kernel.exec-shield]=1
+  [kernel.randomize_va_space]=2
+)
+
+set_value() {
+  PARAMETER_NAME="${1}"
+  PARAMETER_VALUE="${2}"
+  FILE="$3"
+  SEPARATOR="$4"
+  VALUE="${PARAMETER_NAME}${SEPARATOR}${PARAMETER_VALUE}"
+
+  if sudo grep -q "${PARAMETER_NAME}" "${FILE}"; then
+    sudo sed -i "0,/.*${PARAMETER_NAME}.*/s//${VALUE}/" "${FILE}"
+  else
+    echo "${VALUE}" | sudo tee -a "${FILE}" > /dev/null
+  fi
+}
+
+# Loop through ssh_values
+for i in "${!ssh_values[@]}"
+do
+    name="${i}"
+    value="${ssh_values[$i]}"
+    set_value "${name}" "${value}" /etc/ssh/sshd_config " "
+done
+
+# Set the permissions on the sshd_config file so that only root users can change its contents
+sudo chown root:root /etc/ssh/sshd_config
+sudo chmod 600 /etc/ssh/sshd_config
+
+# Loop through networking table
+for i in "${!network_parameters[@]}"; do
+  name="${i}"
+  value="${network_parameters[$i]}"
+  set_value "${name}" "${value}" /etc/sysctl.conf "="
+done
+
+# Remove legacy services
+sudo apt-get -y --purge remove telnet
+sudo apt-get -y autoremove
+
+# We do not use passwords on the machines
+
+# Disable the system accounts for non-root users
+
+# shellcheck disable=SC2013
+for user in $(awk -F: '($3 < 500) {print $1 }' /etc/passwd); do
+  if [ "$user" != "root" ]; then
+    sudo /usr/sbin/usermod -L "$user"
+    if [ "$user" != "sync" ] && [ "$user" != "shutdown" ] && [ "$user" != "halt" ]; then
+      sudo /usr/sbin/usermod -s /sbin/nologin "$user"
+    fi
+  fi
+done
+
+# Set User/Group Owner and Permission on “/etc/anacrontab”, “/etc/crontab” and “/etc/cron
+sudo chown root:root /etc/crontab /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly /etc/cron.d
+sudo chmod og-rwx /etc/crontab /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly /etc/cron.d
+
+# Set the right and permissions on root crontab
+sudo chown root:root /var/spool/cron/crontabs
+sudo chmod og-rwx /var/spool/cron/crontabs
+
+# Set User/Group Owner and Permission on “passwd” file
+sudo chmod 644 /etc/passwd
+sudo chown root:root /etc/passwd
+
+# Set User/Group Owner and Permission on the “group” file
+sudo chmod 644 /etc/group
+sudo chown root:root /etc/group
+
+#Set User/Group Owner and Permission on the “shadow” file
+sudo chmod 600 /etc/shadow
+sudo chown root:root /etc/shadow
+
+# Set User/Group Owner and Permission on the “gshadow” file
+sudo chmod 600 /etc/gshadow
+sudo chown root:root /etc/gshadow
+
+# Restrict Core Dumps
+echo '* hard core 0' | sudo tee -a /etc/security/limits.conf > /dev/null
+
+# MONiTORING. Collect monitoring data with atop and sar
+# https://aws.amazon.com/premiumsupport/knowledge-center/ec2-linux-configure-monitoring-tools/
+
+## Install monitoring tools
+sudo apt-get -y install atop sysstat
+
+## Collect all metrics every minute
+sudo sed -i 's/^LOGINTERVAL=600.*/LOGINTERVAL=60/' /usr/share/atop/atop.daily
+sudo sed -i -e 's|5-55/10|*/1|' -e 's|every 10 minutes|every 1 minute|' -e 's|debian-sa1|debian-sa1 -S XALL|g' /etc/cron.d/sysstat
+sudo bash -c "echo 'SA1_OPTIONS=\"-S XALL\"' >> /etc/default/sysstat"
+
+## Reduce metrics retention to 3 days
+sudo sed -i 's/^LOGGENERATIONS=.*/LOGGENERATIONS=3/' /usr/share/atop/atop.daily
+sudo sed -i 's/^HISTORY=.*/HISTORY=3/' /etc/default/sysstat
+
+## Enable services
+sudo sed -i 's|ENABLED="false"|ENABLED="true"|' /etc/default/sysstat
+sudo systemctl enable atop.service cron.service sysstat.service
+
+# RUN 01 DEV ENV SCRIPT
+## Install metal3 requirements
+
+SCRIPTS_DIR="$(dirname "$(readlink -f "${0}")")"
+
+# Metal3 Dev Env variables
+M3_DENV_ORG="${M3_DENV_ORG:-metal3-io}"
+M3_DENV_REPO="${M3_DENV_REPO:-metal3-dev-env}"
+M3_DENV_URL="${M3_DENV_URL:-https://github.com/${M3_DENV_ORG}/${M3_DENV_REPO}.git}"
+M3_DENV_BRANCH="${M3_DENV_BRANCH:-main}"
+M3_DENV_ROOT="${M3_DENV_ROOT:-/tmp}"
+M3_DENV_PATH="${M3_DENV_PATH:-${M3_DENV_ROOT}/${M3_DENV_REPO}}"
+FORCE_REPO_UPDATE="${FORCE_REPO_UPDATE:-true}"
+
+export CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
+export IMAGE_OS="${IMAGE_OS:-Ubuntu}"
+export EPHEMERAL_CLUSTER="${EPHEMERAL_CLUSTER:-kind}"
+
+mkdir -p "${M3_DENV_ROOT}"
+if [[ -d "${M3_DENV_PATH}" && "${FORCE_REPO_UPDATE}" == "true" ]]; then
+  sudo rm -rf "${M3_DENV_PATH}"
+fi
+if [ ! -d "${M3_DENV_PATH}" ] ; then
+  pushd "${M3_DENV_ROOT}"
+  git clone "${M3_DENV_URL}"
+  popd
+fi
+pushd "${M3_DENV_PATH}"
+git checkout "${M3_DENV_BRANCH}"
+git pull -r || true
+make install_requirements
+popd
+
+rm -rf "${M3_DENV_PATH}"
+
+# SOURCE CLUSTER CONTAINER IMAGES
+# Container images that we pre-pull into the CI image.
+export IMG_REGISTRY="${IMG_REGISTRY:-"docker.io/registry:latest"}"
+export IMG_GOLANG_IMG="${IMG_GOLANG_IMG:-"docker.io/golang:1.19"}"
+export IMG_CENTOS_IMG="${IMG_CENTOS_IMG:-"quay.io/centos/centos:stream9"}"
+export IMG_UBUNTU_IMG="${IMG_UBUNTU_IMG:-"docker.io/ubuntu:22.04"}"
+
+if [[ "${IMAGE_OS}" == "Ubuntu" ]]; then
+    export KUBERNETES_VERSION=${KUBERNETES_VERSION:-"v1.29.0"}
+    export KIND_NODE_IMAGE_VERSION=${KIND_NODE_IMAGE_VERSION:-"v1.29.0"}
+    export IMG_KIND_NODE_IMAGE="${IMG_KIND_NODE_IMAGE:-"kindest/node:${KIND_NODE_IMAGE_VERSION}"}"
+fi
+
+for container in $(env | grep "IMG_*" | cut -f2 -d'='); do
+  sudo "${CONTAINER_RUNTIME}" pull "${container}"
+done
+
+# RESET CLOUD INIT
+# Following will remove any cloud init's previous run
+# data and force cloud-init to again on next boot.
+
+sudo rm -rf /var/lib/cloud/*

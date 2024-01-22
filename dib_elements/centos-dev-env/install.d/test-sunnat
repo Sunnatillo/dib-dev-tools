@@ -2,6 +2,9 @@
 
 set -eux
 
+# This script sets up fresh ubuntu 22.04+ installation
+# to create a base image for our applications.
+
 user=$user
 password=$password
 
