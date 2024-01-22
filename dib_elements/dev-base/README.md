@@ -1,2 +1,14 @@
-This element installs common packages for ubuntu and centos, 
-that needed to run metal3-dev-env and jenkins agents
+# dev-base element
+
+### Overview
+
+This element takes care of installing common packages both for ubuntu and centos dev images
+
+### Depends
+
+* base
+* vm
+* devuser
+* openssh-server
+* pkg-map
+* package-installs
