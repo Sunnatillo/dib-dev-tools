@@ -3,6 +3,8 @@
 set -eux
 
 sudo dnf distro-sync -y
+
+# Install EPEL repo (later required by atop, python3-bcrypt and python3-passlib)
 sudo dnf install -y epel-release
 
 # Without this minikube cannot start properly kvm and fails.
